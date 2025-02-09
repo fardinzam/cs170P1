@@ -4,6 +4,7 @@ from typing import Callable, List
 BOARD_SIZE_I = 3
 BOARD_SIZE_J = 3
 
+# Preset 8 puzzles, taken from example code in assignment description
 EASY_1 = [[1, 2, 3], [4, 5, 6], [7, 8, 0]]
 EASY_2 = [[1, 2, 3], [4, 5, 6], [7, 0, 8]]
 MEDIUM = [[1, 2, 0], [4, 5, 3], [7, 8, 6]]
@@ -12,6 +13,7 @@ HARD_2 = [[8, 7, 1], [6, 0, 2], [5, 4, 3]]
 
 EIGHT_GOAL_STATE = [[1, 2, 3], [4, 5, 6], [7, 8, 0]]
 
+# Traceback
 SHOW_STEPS = True
 NUM_TO_CORRECT_INDEX = {
 	1: [0, 0],
@@ -32,6 +34,7 @@ def flatmap(nested_list: List[List]):
 
 ############################
 # Treenode
+# Stores board configuration, parent node, and cost values.
 ############################
 class TreeNode:
 	def __init__(
@@ -56,13 +59,13 @@ class TreeNode:
 	def num_state_to_str(self):
 		return self.str_state
 
-	def is_end_node(self):
+	def is_end_node(self): #check if node is goal state
 		return self.list_state == EIGHT_GOAL_STATE
 	
 	def __lt__(self, other): ## for heapq
 		return self.weight < other.weight
 
-	def generate_adjacent_nodes(self, weight_func: Callable):
+	def expand(self, weight_func: Callable):
 		# swap the 0 with adjacent values to generate adjacent nodes
 		zero_index_i, zero_index_j = -1, -1
 		for i in range(self.size_i):
@@ -98,6 +101,7 @@ class TreeNode:
 
 ############################
 # Priority queue
+# make sure lowest f(n) values are expanded first
 ############################
 class PriorityQueue:
     def __init__(self, key: Callable):
@@ -105,12 +109,12 @@ class PriorityQueue:
         self.elements = set()
         self.key = key
 
-    def push(self, val):
+    def push(self, val): # Push node into priority queue if it’s not present
         if val not in self.elements:
             heapq.heappush(self.heap, (self.key(val), val))
             self.elements.add(val)
 
-    def pop(self):
+    def remove_front(self):
         if self.heap:
             _, val = heapq.heappop(self.heap)
             self.elements.remove(val)
@@ -130,25 +134,26 @@ class PriorityQueue:
 
 ############################
 # Solver class
+# implement search algorithms
 ############################
 class EightPuzzleSolver:
 	def __init__(self, weight_func: Callable):
 		self.visited_states = set()
 		self.state_to_node_map = {}
-		self.priority_queue = PriorityQueue(lambda n: n.weight)
+		self.nodes = PriorityQueue(lambda n: n.weight)
 		self.path = []
 		self.weight_func = weight_func
 
-	def solve(self, starting_state: List[List[int]]):
+	def general_search(self, starting_state: List[List[int]]):
 		_, h_n, _ = self.weight_func(starting_state, 0)
 		start_node = TreeNode(starting_state, h_n=h_n)
 		self.state_to_node_map[start_node.str_state] = start_node
-		self.priority_queue.push(start_node)
+		self.nodes.push(start_node)
 		num_nodes_expanded = 0
 
 		curr_node = start_node
-		while not self.priority_queue.is_empty():
-			curr_node = self.priority_queue.pop()
+		while not self.nodes.is_empty():
+			curr_node = self.nodes.remove_front()
 
 			# if this state was already explored before, don't explore it again
 			if curr_node.str_state in self.visited_states:
@@ -162,7 +167,7 @@ class EightPuzzleSolver:
 			if curr_node.is_end_node(): 
 				return curr_node, num_nodes_expanded  # if problem.GOAL-TEST(node.STATE) succeeds then return node
 			else:
-				adjacent_nodes = curr_node.generate_adjacent_nodes(self.weight_func)
+				adjacent_nodes = curr_node.expand(self.weight_func)
 				num_nodes_expanded += 1
 				for i in range(len(adjacent_nodes)):
 					# update weights and de-dupe
@@ -173,7 +178,7 @@ class EightPuzzleSolver:
 							adjacent_nodes[i].weight
 						)
 						adjacent_nodes[i] = self.state_to_node_map[str_state]
-				self.priority_queue.push_multiple(adjacent_nodes)
+				self.nodes.push_multiple(adjacent_nodes)
 
 		return None, num_nodes_expanded  # if EMPTY(nodes) then return "failure"
 
@@ -181,11 +186,13 @@ class EightPuzzleSolver:
 ############################
 # Search/heuristic functions
 ############################
+# f(n) = g(n), where g(n) is the cost from the start node to the current node.
 def uniformCostWeightFunction(state: List[List[int]], parent_weight: int):
 	g_n = parent_weight
 	h_n = 1
 	return g_n, h_n, g_n + h_n
 
+# h(n) = Sum of the absolute distances of each tile from its goal position.
 def manhattanDistanceWeightFunction(state: List[List[int]], parent_weight: int):
 	h_n = 0
 	for i in range(len(state)):
@@ -195,6 +202,7 @@ def manhattanDistanceWeightFunction(state: List[List[int]], parent_weight: int):
 	g_n = parent_weight
 	return g_n, h_n, g_n + h_n
 
+# h(n) = Count of tiles not in their goal positions.
 def misplacedTileWeightFunction(state: List[List[int]], parent_weight: int):
 	misplaced_tiles = 0
 	for i in range(len(state)):
@@ -218,7 +226,7 @@ def get_weight_function():
 	elif algorithm == "3":
 		return manhattanDistanceWeightFunction
 
-def get_board():
+def get_board(): #inputs take from example code in assignment description
 	puzzle_mode = input("Welcome to Dean's 8-Puzzle Solver. Type '1' to use a default puzzle, or '2' to create your own.\n")
 	if puzzle_mode == "1":
 		selected_difficulty = input("You wish to use a default puzzle. Please enter a desired difficulty on a scale from 0 to 4.\n")
@@ -247,7 +255,7 @@ def get_board():
 ######################
 if __name__ == '__main__':
 	board, weight_function = get_board(), get_weight_function()
-	final_node, num_expanded_nodes = EightPuzzleSolver(weight_function).solve(board)
+	final_node, num_expanded_nodes = EightPuzzleSolver(weight_function).general_search(board)
 	# report solution
 	node = final_node
 	solution_depth = -1
